@@ -1,0 +1,161 @@
+model:
+  base_learning_rate: 1.0e-05
+  target: ldm.models.diffusion.ddpm.LatentDiffusion
+  params:
+    linear_start: 0.00085
+    linear_end: 0.012
+    num_timesteps_cond: 1
+    log_every_t: 200
+    timesteps: 1000
+    first_stage_key: inpaint
+    cond_stage_key: image
+    image_size: 64
+    channels: 4
+    cond_stage_trainable: true
+    conditioning_key: crossattn
+    monitor: train/loss
+    u_cond_percent: 0.2
+    scale_factor: 0.18215
+    use_ema: false
+    lpips_weight: 0.05
+    lpips_use_mask: true
+    shading_grad_weight: 0.0
+    masked_l1_weight: 0.0
+    percept_t_threshold: 0.3
+    patch_size: 16
+    scheduler_config:
+      target: ldm.lr_scheduler.LambdaLinearScheduler
+      params:
+        warm_up_steps:
+        - 200
+        cycle_lengths:
+        - 10000000000000
+        f_start:
+        - 0.1
+        f_max:
+        - 1.0
+        f_min:
+        - 1.0
+    unet_config:
+      target: ldm.modules.diffusionmodules.openaimodel.UNetModel
+      params:
+        image_size: 32
+        in_channels: 9
+        out_channels: 4
+        model_channels: 320
+        attention_resolutions:
+        - 4
+        - 2
+        - 1
+        num_res_blocks: 2
+        channel_mult:
+        - 1
+        - 2
+        - 4
+        - 4
+        num_heads: 8
+        use_spatial_transformer: true
+        transformer_depth: 1
+        context_dim: 768
+        use_checkpoint: true
+        legacy: false
+        add_conv_in_front_of_unet: false
+    first_stage_config:
+      target: ldm.models.autoencoder.AutoencoderKL
+      params:
+        embed_dim: 4
+        monitor: val/rec_loss
+        ddconfig:
+          double_z: true
+          z_channels: 4
+          resolution: 256
+          in_channels: 3
+          out_ch: 3
+          ch: 128
+          ch_mult:
+          - 1
+          - 2
+          - 4
+          - 4
+          num_res_blocks: 2
+          attn_resolutions: []
+          dropout: 0.0
+        lossconfig:
+          target: torch.nn.Identity
+    cond_stage_config:
+      target: ldm.modules.encoders.modules.FrozenCLIPImageEmbedder
+      params:
+        version: pretrained_models/clip-vit-large-patch14
+        use_patch_tokens: false
+data:
+  target: main.DataModuleFromConfig
+  params:
+    batch_size: 4
+    num_workers: 8
+    wrap: false
+    train:
+      target: ldm.data.mydata.MyTransparentDataset
+      params:
+        state: train
+        dataset_dir: dataset/my_data
+        img_size: 512
+        use_realistic_occlusion: false
+        mask_aug_scheme: 3
+        val_iou_threshold: 0.5
+        thin_ratio_threshold: 0.5
+        thin_protect_ksize: 5
+        thin_protect_iter: 1
+        s1_ksize_range:
+        - 5
+        - 11
+        s1_blur_sigma_range:
+        - 0.8
+        - 1.8
+        s1_open_ksize: 5
+        s2_disp_strength_range:
+        - 4.0
+        - 8.0
+        s2_close_ksize: 7
+        s3_num_shapes_range:
+        - 3
+        - 5
+        s3_size_ratio_range:
+        - 0.05
+        - 0.07
+        s3_open_ksize: 3
+        s4_downsample_ratio_range:
+        - 4
+        - 16
+    validation:
+      target: ldm.data.mydata.MyTransparentDataset
+      params:
+        state: test
+        dataset_dir: dataset/my_data
+        img_size: 512
+        mask_aug_scheme: 3
+        use_realistic_occlusion: false
+        val_iou_threshold: 0.5
+        thin_ratio_threshold: 0.5
+        thin_protect_ksize: 5
+        thin_protect_iter: 1
+        s1_ksize_range:
+        - 5
+        - 11
+        s1_blur_sigma_range:
+        - 0.8
+        - 1.8
+        s1_open_ksize: 5
+        s2_disp_strength_range:
+        - 4.0
+        - 8.0
+        s2_close_ksize: 7
+        s3_num_shapes_range:
+        - 3
+        - 5
+        s3_size_ratio_range:
+        - 0.05
+        - 0.07
+        s3_open_ksize: 3
+        s4_downsample_ratio_range:
+        - 4
+        - 16

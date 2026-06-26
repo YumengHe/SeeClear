@@ -1,4 +1,5 @@
 session_requirements.txt
+LOCAL_COMMANDS.md
 
 # Local environments and build artifacts
 .conda/

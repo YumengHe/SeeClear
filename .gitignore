@@ -16,6 +16,7 @@ dist/
 # Local checkpoints, model weights, and generated outputs
 /pretrained_models/
 /models/
+/dataset/
 /outputs/
 /runs/
 /gradio_runs/

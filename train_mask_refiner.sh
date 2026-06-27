@@ -1,27 +1,36 @@
 #!/bin/bash
+set -euo pipefail
 
 DATA_DIR="dataset/my_data"
 PYTHON_BIN="python"
+EXTRA_ARGS=()
 
-BASE_CKPT_DIR="/nas/xiaoyingwang/seeclear/train_runs/mask_refiner"
+BASE_CKPT_DIR="outputs/mask_refiner"
 
 BATCH_SIZE=16
 EPOCHS=500
 LR=1e-4
 
 STRATEGY=""
-while getopts "s:" opt; do
-  case $opt in
-    s)
-      STRATEGY=$OPTARG
-      ;;
-    \?)
-      echo "Invalid option: -$OPTARG" >&2
-      echo "Usage: $0 -s<strategy_number>"
-      echo "Example: $0 -s9  (for BBox mode 1)"
-      exit 1
-      ;;
-  esac
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -s)
+            STRATEGY="$2"
+            shift 2
+            ;;
+        -s*)
+            STRATEGY="${1#-s}"
+            shift
+            ;;
+        --strategy)
+            STRATEGY="$2"
+            shift 2
+            ;;
+        *)
+            EXTRA_ARGS+=("$1")
+            shift
+            ;;
+    esac
 done
 
 if [ -z "$STRATEGY" ]; then
@@ -43,6 +52,23 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 SAVE_DIR="${BASE_CKPT_DIR}/s${STRATEGY}_${TIMESTAMP}"
 
+if [ ! -d "$DATA_DIR/opaque" ] || [ ! -d "$DATA_DIR/reference" ] || [ ! -d "$DATA_DIR/masks" ]; then
+    echo "Error: Mask refiner dataset is incomplete under: $DATA_DIR"
+    echo "Expected directories:"
+    echo "  $DATA_DIR/opaque"
+    echo "  $DATA_DIR/reference"
+    echo "  $DATA_DIR/masks"
+    exit 1
+fi
+
+for split_file in train_list.txt val_list.txt test_list.txt; do
+    if [ ! -f "$DATA_DIR/$split_file" ]; then
+        echo "Error: Missing dataset split file: $DATA_DIR/$split_file"
+        echo "Run: python scripts/split_dataset.py --data_dir $DATA_DIR"
+        exit 1
+    fi
+done
+
 mkdir -p $BASE_CKPT_DIR
 
 echo "=========================================="
@@ -62,6 +88,7 @@ echo "=========================================="
     --batch_size $BATCH_SIZE \
     --epochs $EPOCHS \
     --lr $LR \
-    --resume
+    --resume \
+    "${EXTRA_ARGS[@]}"
 
 echo "Training completed! Models saved to: $SAVE_DIR"

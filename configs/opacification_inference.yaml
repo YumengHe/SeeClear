@@ -129,7 +129,7 @@ data:
     validation:
       target: ldm.data.mydata.MyTransparentDataset
       params:
-        state: test
+        state: val
         dataset_dir: dataset/my_data
         img_size: 512
         mask_aug_scheme: 3

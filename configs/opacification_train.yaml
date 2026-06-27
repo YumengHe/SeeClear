@@ -80,7 +80,7 @@ model:
         version: "pretrained_models/clip-vit-large-patch14"
         use_patch_tokens: false
 data:
-  target: main.DataModuleFromConfig
+  target: train_opacification.DataModuleFromConfig
   params:
       batch_size: 4
       num_workers: 8 
@@ -121,7 +121,7 @@ data:
       validation:
           target: ldm.data.mydata.MyTransparentDataset
           params:
-              state: test
+              state: val
               dataset_dir: dataset/my_data
               img_size: 512
               mask_aug_scheme: 3
@@ -155,7 +155,8 @@ lightning:
   trainer:
     max_epochs: 400
     num_nodes: 1
-    accelerator: ddp
+    accelerator: cuda
+    strategy: ddp
     gpus: "0,1,2,3"
     log_every_n_steps: 20
     limit_val_batches: 0
@@ -164,12 +165,10 @@ lightning:
     enable_model_summary: false
 
   logger:
-    target: pytorch_lightning.loggers.WandbLogger
+    target: pytorch_lightning.loggers.TensorBoardLogger
     params:
-      project: "transparent-train"
-      name: "seeclear"
       save_dir: "outputs/opacification"
-      log_model: false
+      name: "seeclear"
 
   callbacks:
     best_loss:

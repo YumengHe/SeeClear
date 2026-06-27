@@ -1,19 +1,30 @@
 #!/bin/bash
+set -euo pipefail
 
 # 
 #   bash train.sh
+#   bash train.sh --from-pbe
 #
-#   bash train.sh -r /nas/xiaoyingwang/seeclear/train_runs/opacification/<run_name>
-#   bash train.sh -r /nas/xiaoyingwang/seeclear/train_runs/opacification/<run_name>/checkpoints/last.ckpt
+#   bash train.sh -r outputs/opacification/<run_name>
+#   bash train.sh -r outputs/opacification/<run_name>/checkpoints/last.ckpt
 
 RESUME_PATH=""
 PYTHON_BIN="python"
+EXTRA_ARGS=""
+PRETRAINED_MODEL="pretrained_models/seeclear_pretrained.ckpt"
+INIT_MODE="SeeClear fine-tuning"
+DATA_DIR="dataset/my_data"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         -r|--resume)
             RESUME_PATH="$2"
             shift 2
+            ;;
+        --from-pbe)
+            PRETRAINED_MODEL="pretrained_models/pbe_pretrained.ckpt"
+            INIT_MODE="Paint-by-Example initialization"
+            shift
             ;;
         *)
             EXTRA_ARGS="$EXTRA_ARGS $1"
@@ -39,7 +50,7 @@ if [ -n "$RESUME_PATH" ]; then
     echo ""
     
     "$PYTHON_BIN" -u train_opacification.py \
-        --logdir /nas/xiaoyingwang/seeclear/train_runs/opacification \
+        --logdir outputs/opacification \
         -r "$RESUME_PATH" \
         --base \
         --scale_lr False \
@@ -49,14 +60,30 @@ else
     echo "========================================"
     echo "New Training Mode"
     echo "Using config: configs/opacification_train.yaml"
+    echo "Initialization: $INIT_MODE"
+    echo "Checkpoint: $PRETRAINED_MODEL"
     echo "========================================"
     echo ""
+
+    if [ ! -f "$PRETRAINED_MODEL" ]; then
+        echo "Error: Pretrained checkpoint does not exist: $PRETRAINED_MODEL"
+        exit 1
+    fi
+
+    for split_file in train_list.txt val_list.txt test_list.txt; do
+        if [ ! -f "$DATA_DIR/$split_file" ]; then
+            echo "Error: Missing dataset split file: $DATA_DIR/$split_file"
+            echo "Run: python scripts/split_dataset.py --data_dir $DATA_DIR"
+            exit 1
+        fi
+    done
     
     "$PYTHON_BIN" -u train_opacification.py \
-        --logdir /nas/xiaoyingwang/seeclear/train_runs/opacification \
-        --pretrained_model pretrained_models/seeclear_pretrained.ckpt \
+        --logdir outputs/opacification \
+        --pretrained_model "$PRETRAINED_MODEL" \
         --base configs/opacification_train.yaml \
         --scale_lr False \
+        --no-test True \
         $EXTRA_ARGS
 fi
 

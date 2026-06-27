@@ -1,135 +1,126 @@
 # SeeClear: Reliable Transparent Object Depth Estimation via Generative Opacification
 
-<h4 align="center">
+<p align="center">
+  <a href="https://arxiv.org/abs/2603.19547"><img src="https://img.shields.io/badge/arXiv-2603.19547-b31b1b.svg?logo=arXiv" alt="arXiv"></a>
+  <a href="https://heyumeng.com/SeeClear-web/"><img src="https://img.shields.io/badge/Project-Page-blue" alt="Project page"></a>
+  <a href="#local-gradio-demo"><img src="https://img.shields.io/badge/Demo-Local%20Gradio-green" alt="Local demo"></a>
+  <a href="#model-files"><img src="https://img.shields.io/badge/Models-Coming%20Soon-lightgrey" alt="Models"></a>
+  <a href="#dataset"><img src="https://img.shields.io/badge/Dataset-Coming%20Soon-lightgrey" alt="Dataset"></a>
+</p>
 
-Xiaoying Wang<sup>*</sup>, Yumeng He<sup>*</sup>, Jingkai Shi<sup>*</sup>, Jiayin Lu, Yin Yang, Ying Jiang, Chenfanfu Jiang
-
-[![arXiv](https://img.shields.io/badge/arXiv-2603.19547-b31b1b.svg?logo=arXiv)](https://arxiv.org/abs/2603.19547)
-[![Project Page](https://img.shields.io/badge/Project%20Page-SeeClear-blue.svg)](https://heyumeng.com/SeeClear-web/)
-[![Code](https://img.shields.io/badge/Code-SeeClear-green.svg)](#quick-start)
-[![Model](https://img.shields.io/badge/Model-Coming%20Soon-lightgrey.svg)](#model-files)
-[![Dataset](https://img.shields.io/badge/Dataset-Coming%20Soon-lightgrey.svg)](#dataset)
-[![Demo](https://img.shields.io/badge/Demo-Coming%20Soon-lightgrey.svg)](#quick-start)
+<p align="center">
+  Xiaoying Wang<sup>*</sup>, Yumeng He<sup>*</sup>, Jingkai Shi<sup>*</sup>, Jiayin Lu, Yin Yang, Ying Jiang, Chenfanfu Jiang
+</p>
 
 <p align="center">
   <img src="assets/teaser.png" alt="SeeClear teaser" width="100%">
 </p>
 
-</h4>
+SeeClear is a plug-and-play framework for transparent-object depth estimation.
+It first turns transparent regions into geometry-consistent opaque appearances,
+then feeds the optimized image to an off-the-shelf monocular depth estimator.
+The depth model is kept unchanged, while depth predictions around transparent
+objects become more stable.
 
-This repository contains the official implementation of **SeeClear**, a
-plug-and-play framework for transparent-object depth estimation. SeeClear first
-converts transparent regions into geometry-consistent opaque appearances, then
-feeds the optimized image to an off-the-shelf monocular depth estimator. This
-keeps the depth model unchanged while improving depth stability on transparent
-objects.
-
-The released code includes the final inference pipeline, diffusion
-opacification training code, mask refinement training code, and demo wrappers
-for image-to-depth and mask-to-depth workflows.
+This repository contains the inference pipeline, the diffusion opacification
+training code, the mask refinement training code, and a Gradio demo that can be
+run on your own GPU server.
 
 ## News
 
-- **Coming soon**: Pretrained checkpoints and dataset release links will be
-  added.
 - **2026-03-20**: SeeClear is available on arXiv.
+- **Coming soon**: Pretrained checkpoints, dataset links, and hosted demo links
+  will be added.
 
 ## Method Overview
 
-Given an RGB image containing transparent objects, SeeClear runs the following
-pipeline:
+Given an RGB image with transparent objects, SeeClear runs:
 
-1. Localize transparent regions using automatic segmentation or an uploaded
-   mask.
-2. Generate an opaque version of the transparent region with a conditional
-   latent diffusion model.
-3. Refine the blending mask with a lightweight mask head.
-4. Composite the generated opaque region into the original image.
-5. Predict depth with a foundation monocular depth estimator.
+1. Transparent-object mask preparation with Trans4Trans, an uploaded mask, SAM3,
+   or GSAM2.
+2. Conditional diffusion opacification inside the transparent regions.
+3. Lightweight mask refinement after generation.
+4. Opaque image compositing.
+5. Monocular depth prediction with Depth Anything 3 or MoGe.
 
-The default automatic segmentation path uses Trans4Trans. The demo code also
-keeps auxiliary SAM3 and GSAM2 mask wrappers used for interactive or
-prompt-based mask preparation.
+The default automatic segmentation mode uses Trans4Trans. SAM3 and GSAM2 are
+kept as optional mask preparation tools in the demo.
 
 ## Installation
 
-Create the core SeeClear environment for diffusion opacification, mask
-refinement, training, inference, and the base Gradio demo:
+Create the environment:
 
 ```bash
+git clone https://github.com/YumengHe/SeeClear.git
+cd SeeClear
 conda env create -f environment.yaml
 conda activate seeclear
 ```
 
-Optional demo backends can be installed into the same environment:
-
-```bash
-conda env update -n seeclear -f environment.optional.yaml
-```
-
-The optional file updates the same environment; it does not create a second
-environment.
-
-The optional automatic image-to-depth and interactive mask modes expect these
-external repositories next to this repository:
-
-```text
-../Trans4Trans_clean
-../Depth-Anything-3
-../moge
-```
+The release environment is intended to cover training, inference, and the full
+local demo. CUDA 12.1 compatible NVIDIA drivers are recommended.
 
 ## Model Files
 
-This code release does not include model weights or datasets. Put the required
-weights at the default paths below, or create symlinks from these paths to your
-external storage:
+This is a code-only release. Model weights and datasets are not included.
+
+Required SeeClear checkpoints:
 
 ```text
-pretrained_models/seeclear_pretrained.ckpt
 pretrained_models/clip-vit-large-patch14/
+pretrained_models/seeclear_pretrained.ckpt
 pretrained_models/seeclear_opacification.ckpt
 pretrained_models/mask_refiner.pth
-pretrained_models/sam3.pt
 ```
 
-The final inference config is included at:
+The default diffusion training command fine-tunes from
+`pretrained_models/seeclear_pretrained.ckpt`. To reproduce training from the
+original Paint-by-Example initialization, provide:
 
 ```text
-configs/opacification_inference.yaml
+pretrained_models/pbe_pretrained.ckpt
 ```
 
-## Quick Start
+Optional model files for automatic segmentation and interactive demo modes:
 
-Run the Gradio demo:
+```text
+pretrained_models/sam2.1_hiera_large.pt
+pretrained_models/sam3.pt
+pretrained_models/trans4trans_medium.pth
+```
+
+## Local Gradio Demo
+
+To start a local Gradio demo, activate the environment and run:
 
 ```bash
-source /data/xiaoyingwang/tools/miniconda3/etc/profile.d/conda.sh
 conda activate seeclear
-export CUDA_VISIBLE_DEVICES=0
-export GRADIO_SERVER_NAME=127.0.0.1
-export GRADIO_SERVER_PORT=7861
-export GRADIO_TEMP_DIR=/nas/xiaoyingwang/seeclear/gradio_runs
-mkdir -p "$GRADIO_TEMP_DIR"
 python -m demo.app
 ```
 
-The Gradio demo keeps the opacification model, mask refiner, Depth Anything V3,
-MoGe, and SAM3 models cached in the server process after first use.
+Gradio prints the local URL in the terminal after the server starts.
 
-Connect from a local machine:
+## Command-Line Inference
+
+### Image to Depth
+
+This runs automatic mask prediction, opacification, mask refinement,
+compositing, and depth prediction:
 
 ```bash
-ssh -N -L 7861:127.0.0.1:7861 -J delluluwxy@leap.math.ucla.edu xiaoyingwang@fanfuai.math.ucla.edu
+python -m demo.run_once \
+  --image examples/demo/1.jpg \
+  --mask-source trans4trans \
+  --depth-source da3 \
+  --work-dir outputs/demo/image_to_depth \
+  --stem demo \
+  --seed 42 \
+  --unipc-steps 10
 ```
 
-Open:
+### Image and Mask to Depth
 
-```text
-http://127.0.0.1:7861
-```
-
-Run single-image inference with an existing mask:
+This uses existing masks and skips automatic segmentation:
 
 ```bash
 python -m demo.run_once \
@@ -137,41 +128,76 @@ python -m demo.run_once \
   --mask examples/demo/masks \
   --mask-source upload \
   --depth-source da3 \
-  --work-dir /nas/xiaoyingwang/seeclear/demo_runs/mask_to_depth \
+  --work-dir outputs/demo/mask_to_depth \
   --stem demo \
   --seed 42 \
   --unipc-steps 10
 ```
 
-Run automatic image-to-depth inference with Trans4Trans masks:
+### Image and Mask to Opaque
+
+This runs only diffusion opacification, mask refinement, and compositing:
 
 ```bash
-python -m demo.run_once \
+python scripts/infer_opacification.py \
   --image examples/demo/1.jpg \
-  --mask-source trans4trans \
-  --depth-source da3 \
-  --work-dir /nas/xiaoyingwang/seeclear/demo_runs/image_to_depth \
+  --mask examples/demo/masks \
+  --work_dir outputs/demo/mask_to_opaque \
   --stem demo \
-  --seed 42 \
-  --unipc-steps 10
+  --opacification_ckpt pretrained_models/seeclear_opacification.ckpt \
+  --config configs/opacification_inference.yaml \
+  --mask_refiner_path pretrained_models/mask_refiner.pth \
+  --unipc_steps 10 \
+  --seeds 42 \
+  --batch_size 8 \
+  --prep_mode fast
 ```
-
-For the complete command list, including opaque-only inference, see
-[COMMANDS.md](COMMANDS.md).
 
 ## Training
 
-Train the diffusion opacification model with the final default config:
+Training expects paired transparent-object data under:
+
+```text
+dataset/my_data/
+  opaque/
+  transparent/
+  mask/
+  reference/
+  masks/
+  train_list.txt
+  val_list.txt
+  test_list.txt
+```
+
+Each filename listed in `train_list.txt`, `val_list.txt`, or `test_list.txt`
+should exist in all image directories. The diffusion trainer reads `opaque/`,
+`transparent/`, and `mask/`; the mask-refiner trainer reads `opaque/`,
+`reference/`, and `masks/`. If both trainers use the same paired data,
+`reference/` can point to `transparent/`, and `masks/` can point to `mask/`.
+Large datasets should be symlinked into this layout rather than committed to the
+repository.
+
+Create the split files:
+
+```bash
+python scripts/split_dataset.py --data_dir dataset/my_data --train_size 4824 --val_size 30 --test_size 30 --seed 42
+```
+
+Training uses `train_list.txt` for optimization and `val_list.txt` for
+validation. `test_list.txt` is reserved for final evaluation and is not used
+while training.
+
+Fine-tune the diffusion opacification model from the released SeeClear
+checkpoint:
 
 ```bash
 bash train.sh
 ```
 
-Resume from a training directory or checkpoint:
+Reproduce training from the original Paint-by-Example initialization:
 
 ```bash
-bash train.sh -r outputs/opacification/<run_name>
-bash train.sh -r outputs/opacification/<run_name>/checkpoints/last.ckpt
+bash train.sh --from-pbe
 ```
 
 Train the mask refinement head:
@@ -180,32 +206,11 @@ Train the mask refinement head:
 bash train_mask_refiner.sh -s5
 ```
 
-The default diffusion training config is:
-
-```text
-configs/opacification_train.yaml
-```
-
 ## Dataset
 
-The paper introduces **SeeClear-396k**, a synthetic paired dataset of
-transparent and opaque renderings with aligned masks, depth, and normals for
-training the generative opacification model. The dataset is not included in this
-code-only release.
-
-## Repository Layout
-
-```text
-configs/                opacification training and inference configs
-demo/                   Gradio demo and single-image inference wrappers
-ldm/                    latent diffusion model implementation
-mask_refiner/           mask refinement model and training code
-pretrained_models/      default checkpoint location; weights are excluded
-scripts/                command-line inference entry points
-COMMANDS.md             detailed runnable commands
-train.sh                diffusion opacification training entry point
-train_mask_refiner.sh   mask refinement training entry point
-```
+The paper introduces **SeeClear-396k**, a paired synthetic dataset of
+transparent and opaque renderings with aligned masks, depth, and normals. The
+dataset is not included in this code-only release.
 
 ## Citation
 
@@ -224,9 +229,4 @@ If you find SeeClear useful, please cite:
 
 SeeClear builds on latent diffusion models, transparent-object segmentation
 models, and modern monocular depth estimators. We thank the authors and
-maintainers of these open-source projects for making their work available.
-
-## Contact
-
-For questions, please open an issue or contact the authors listed on the
-project page.
+maintainers of these open-source projects.

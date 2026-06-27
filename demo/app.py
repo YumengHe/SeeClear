@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import socket
 import subprocess
 import tempfile
 import os
@@ -10,9 +11,10 @@ import re
 import time
 from pathlib import Path
 
-os.environ.setdefault("GRADIO_TEMP_DIR", "/nas/xiaoyingwang/seeclear/gradio_runs")
+APP_REPO_ROOT = Path(__file__).resolve().parents[1]
+os.environ.setdefault("GRADIO_TEMP_DIR", str(APP_REPO_ROOT / "outputs" / "gradio"))
 os.environ.setdefault("TMPDIR", os.environ["GRADIO_TEMP_DIR"])
-SEECLEAR_CACHE_DIR = Path(os.environ.get("SEECLEAR_CACHE_DIR", str(Path(os.environ["GRADIO_TEMP_DIR"]).parent / "cache")))
+SEECLEAR_CACHE_DIR = Path(os.environ.get("SEECLEAR_CACHE_DIR", str(APP_REPO_ROOT / "outputs" / "cache")))
 os.environ.setdefault("HF_HOME", str(SEECLEAR_CACHE_DIR / "hf_home"))
 os.environ.setdefault("TORCH_EXTENSIONS_DIR", str(SEECLEAR_CACHE_DIR / "torch_extensions"))
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
@@ -78,6 +80,15 @@ SAM3_STATE = Sam3State()
 OPACIFICATION_RUNTIME = None
 OPACIFICATION_RUNTIME_KEY = None
 DEPTH_RUNTIME_CACHE = DepthRuntimeCache()
+
+
+def _select_server_port(server_name: str) -> int:
+    if "GRADIO_SERVER_PORT" in os.environ:
+        return int(os.environ["GRADIO_SERVER_PORT"])
+    bind_host = "127.0.0.1" if server_name in {"0.0.0.0", "::"} else server_name
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((bind_host, 0))
+        return sock.getsockname()[1]
 
 
 class MaskState:
@@ -1533,10 +1544,9 @@ with gr.Blocks(title="SeeClear Demo") as demo:
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("GRADIO_SERVER_PORT", "7860"))
     server_name = os.environ.get("GRADIO_SERVER_NAME", "127.0.0.1")
     demo.queue().launch(
         server_name=server_name,
-        server_port=port,
+        server_port=_select_server_port(server_name),
         allowed_paths=[os.environ["GRADIO_TEMP_DIR"], str(REPO_ROOT)],
     )

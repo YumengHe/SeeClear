@@ -59,12 +59,14 @@ def _cuda_sync():
         torch.cuda.synchronize()
 
 
-def save_original_blend_result_npy(img_np, out_dir, img_name):
+def save_blend_result(img_np, out_dir, img_name):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     t0 = time.perf_counter()
-    np.save(out_dir / f"{img_name}_result.npy", np.ascontiguousarray(img_np))
+    arr = np.ascontiguousarray(img_np.astype(np.uint8, copy=False))
+    np.save(out_dir / f"{img_name}_result.npy", arr)
+    Image.fromarray(arr).save(out_dir / f"{img_name}_result.png")
     return 0.0, time.perf_counter() - t0
 
 
@@ -380,7 +382,7 @@ def run_opacification(args, runtime=None):
                 out_blend_dir = os.path.join(cur_output_base, 'blend')
                 os.makedirs(out_blend_dir, exist_ok=True)
                 img_np_fallback = np.array(Image.open(rgb_path).convert('RGB'))
-                _, t_blend_save = save_original_blend_result_npy(img_np_fallback, out_blend_dir, img_name)
+                _, t_blend_save = save_blend_result(img_np_fallback, out_blend_dir, img_name)
                 timing[img_name]['t_blend'] += t_blend_save
                 print(f"  [NO_MASK] {img_name}: saved original to blend/")
                 continue
@@ -482,7 +484,7 @@ def run_opacification(args, runtime=None):
 
             if not per_mask:
                 out_blend_dir = os.path.join(cur_output_base, 'blend')
-                _, t_blend_save = save_original_blend_result_npy(img_np, out_blend_dir, img_name)
+                _, t_blend_save = save_blend_result(img_np, out_blend_dir, img_name)
                 timing[img_name]['t_blend'] += t_blend_save
                 print(f"  [NO_VALID_MASK] {img_name}: saved original to blend/")
                 continue
@@ -658,7 +660,7 @@ def run_opacification(args, runtime=None):
                 _, (px_s, py_s, px_e, py_e), gen_local, mask_local = item
                 canvas_local = canvas[py_s:py_e, px_s:px_e]
                 canvas_local[mask_local] = gen_local[mask_local]
-            np.save(os.path.join(out_d, f"{img_name}_result.npy"), canvas)
+            save_blend_result(canvas, out_d, img_name)
             t_blend = time.perf_counter() - t0_blend
             return img_name, t_blend
 

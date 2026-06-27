@@ -675,7 +675,7 @@ class MyTransparentMaskHeadDataset(data.Dataset):
         elif self.mask_strategy in [5, 6, 7, 8]:
             scheme = self.mask_strategy - 4  # 5->1, 6->2, 7->3, 8->4
             
-            if self.state == 'train':
+            if self.state in ['train', 'val']:
                 condition_binary_np = augment_mask_scheme(M_gt_binary_np, scheme=scheme, args=self.args)
             else:
                 if use_white_bg:

@@ -274,7 +274,7 @@ class SetupCallback(Callback):
             ckpt_path = os.path.join(self.ckptdir, "last.ckpt")
             trainer.save_checkpoint(ckpt_path)
 
-    def on_pretrain_routine_start(self, trainer, pl_module):
+    def on_fit_start(self, trainer, pl_module):
         if trainer.global_rank == 0:
             # Create logdirs and save configs
             os.makedirs(self.logdir, exist_ok=True)
@@ -314,9 +314,9 @@ class ImageLogger(Callback):
         self.rescale = rescale
         self.batch_freq = batch_frequency
         self.max_images = max_images
-        self.logger_log_images = {
-            pl.loggers.TestTubeLogger: self._testtube,
-        }
+        self.logger_log_images = {}
+        if hasattr(pl.loggers, "TestTubeLogger"):
+            self.logger_log_images[pl.loggers.TestTubeLogger] = self._testtube
         self.log_steps = [2 ** n for n in range(int(np.log2(self.batch_freq)) + 1)]
         if not increase_log_steps:
             self.log_steps = [self.batch_freq]
@@ -407,11 +407,11 @@ class ImageLogger(Callback):
             return True
         return False
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=None):
         if not self.disabled and (pl_module.global_step > 0 or self.log_first_step):
             self.log_img(pl_module, batch, batch_idx, split="train")
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=None):
         if not self.disabled and pl_module.global_step > 0:
             self.log_img(pl_module, batch, batch_idx, split="val")
         if hasattr(pl_module, 'calibrate_grad_norm'):
@@ -441,20 +441,33 @@ class ImageLogger(Callback):
 
 class CUDACallback(Callback):
     # see https://github.com/SeanNaren/minGPT/blob/master/mingpt/callback.py
+    def _device_index(self, trainer):
+        device = getattr(getattr(trainer, "strategy", None), "root_device", None)
+        if device is not None and device.index is not None:
+            return device.index
+        return getattr(trainer, "root_gpu", 0)
+
     def on_train_epoch_start(self, trainer, pl_module):
         # Reset the memory use counter
-        torch.cuda.reset_peak_memory_stats(trainer.root_gpu)
-        torch.cuda.synchronize(trainer.root_gpu)
+        device_index = self._device_index(trainer)
+        torch.cuda.reset_peak_memory_stats(device_index)
+        torch.cuda.synchronize(device_index)
         self.start_time = time.time()
 
-    def on_train_epoch_end(self, trainer, pl_module, outputs):
-        torch.cuda.synchronize(trainer.root_gpu)
-        max_memory = torch.cuda.max_memory_allocated(trainer.root_gpu) / 2 ** 20
+    def on_train_epoch_end(self, trainer, pl_module, outputs=None):
+        device_index = self._device_index(trainer)
+        torch.cuda.synchronize(device_index)
+        max_memory = torch.cuda.max_memory_allocated(device_index) / 2 ** 20
         epoch_time = time.time() - self.start_time
 
         try:
-            max_memory = trainer.training_type_plugin.reduce(max_memory)
-            epoch_time = trainer.training_type_plugin.reduce(epoch_time)
+            strategy = getattr(trainer, "strategy", None)
+            reducer = getattr(strategy, "reduce", None)
+            if reducer is None:
+                reducer = getattr(getattr(trainer, "training_type_plugin", None), "reduce", None)
+            if reducer is not None:
+                max_memory = reducer(max_memory)
+                epoch_time = reducer(epoch_time)
 
             rank_zero_info(f"Average Epoch time: {epoch_time:.2f} seconds")
             rank_zero_info(f"Average Peak memory {max_memory:.2f}MiB")
@@ -572,10 +585,10 @@ class DebugCallback(Callback):
         self._log(f"  every_n_steps: {self.every_n}")
         self._log(f"{'='*60}")
 
-    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx):
+    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=None):
         self._t_step = time.time()
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=None):
         if trainer.global_rank != 0:
             return
 
@@ -613,7 +626,7 @@ class DebugCallback(Callback):
             self._log(f"  >> saving images (step {gs})")
             self._save_batch_images(batch, pl_module, gs)
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=None):
         if trainer.global_rank != 0:
             return
 
@@ -788,14 +801,15 @@ if __name__ == "__main__":
     lightning_config = config.pop("lightning", OmegaConf.create())
     # merge trainer cli with config
     trainer_config = lightning_config.get("trainer", OmegaConf.create())
-    # default to ddp
-    trainer_config["accelerator"] = "ddp"
     for k in nondefault_trainer_args(opt):
         trainer_config[k] = getattr(opt, k)
     if not "gpus" in trainer_config:
-        del trainer_config["accelerator"]
+        if "accelerator" in trainer_config:
+            del trainer_config["accelerator"]
         cpu = True
     else:
+        if "accelerator" not in trainer_config:
+            trainer_config["accelerator"] = "cuda"
         gpuinfo = trainer_config["gpus"]
         print(f"Running on GPUs {gpuinfo}")
         cpu = False
@@ -848,7 +862,7 @@ if __name__ == "__main__":
     # specify which metric is used to determine best models
     default_callbacks_cfg = {
         "setup_callback": {
-            "target": "main.SetupCallback",
+            "target": "train_opacification.SetupCallback",
             "params": {
                 "resume": opt.resume,
                 "now": now,
@@ -860,7 +874,7 @@ if __name__ == "__main__":
             }
         },
         "image_logger": {
-            "target": "main.ImageLogger",
+            "target": "train_opacification.ImageLogger",
             "params": {
                 "batch_frequency": 84,
                 "max_images": 4,
@@ -871,16 +885,16 @@ if __name__ == "__main__":
             }
         },
         "learning_rate_logger": {
-            "target": "main.LearningRateMonitor",
+            "target": "pytorch_lightning.callbacks.LearningRateMonitor",
             "params": {
                 "logging_interval": "step",
             }
         },
         "cuda_callback": {
-            "target": "main.CUDACallback"
+            "target": "train_opacification.CUDACallback"
         },
         "debug_callback": {
-            "target": "main.DebugCallback",
+            "target": "train_opacification.DebugCallback",
             "params": {
                 "save_dir": os.path.join(logdir, "debug"),
                 "every_n_steps": 5,
@@ -932,10 +946,14 @@ if __name__ == "__main__":
 
     # configure learning rate
     bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
-    if not cpu:
-        ngpu = len(lightning_config.trainer.gpus.strip(",").split(','))
-    else:
+    if cpu:
         ngpu = 1
+    else:
+        gpus = lightning_config.trainer.gpus
+        if isinstance(gpus, int):
+            ngpu = 1 if gpus >= 0 else 0
+        else:
+            ngpu = len(str(gpus).strip(",").split(','))
     if 'accumulate_grad_batches' in lightning_config.trainer:
         accumulate_grad_batches = lightning_config.trainer.accumulate_grad_batches
     else:

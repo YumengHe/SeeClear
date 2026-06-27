@@ -162,20 +162,16 @@ dataset/my_data/
   opaque/
   transparent/
   mask/
-  reference/
-  masks/
   train_list.txt
   val_list.txt
   test_list.txt
 ```
 
 Each filename listed in `train_list.txt`, `val_list.txt`, or `test_list.txt`
-should exist in all image directories. The diffusion trainer reads `opaque/`,
-`transparent/`, and `mask/`; the mask-refiner trainer reads `opaque/`,
-`reference/`, and `masks/`. If both trainers use the same paired data,
-`reference/` can point to `transparent/`, and `masks/` can point to `mask/`.
-Large datasets should be symlinked into this layout rather than committed to the
-repository.
+should exist in all three image directories. `opaque/` contains the target
+opaque images, `transparent/` contains the input transparent images, and `mask/`
+contains aligned binary object masks. Large datasets should be symlinked into
+this layout rather than committed to the repository.
 
 Create the split files:
 

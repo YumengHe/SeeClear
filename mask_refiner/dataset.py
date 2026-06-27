@@ -614,8 +614,8 @@ class MyTransparentMaskHeadDataset(data.Dataset):
             rgba_obj_name = random.choice(self.rgba_obj_files)
             
             rgba_opaque = np.array(Image.open(os.path.join(self.rgba_data_dir, 'opaque', rgba_obj_name)).convert('RGBA'))
-            rgba_ref = np.array(Image.open(os.path.join(self.rgba_data_dir, 'reference', rgba_obj_name)).convert('RGBA'))
-            rgba_mask = np.array(Image.open(os.path.join(self.rgba_data_dir, 'masks', rgba_obj_name)).convert('L'))
+            rgba_ref = np.array(Image.open(os.path.join(self.rgba_data_dir, 'transparent', rgba_obj_name)).convert('RGBA'))
+            rgba_mask = np.array(Image.open(os.path.join(self.rgba_data_dir, 'mask', rgba_obj_name)).convert('L'))
             _, rgba_mask = cv2.threshold(rgba_mask, 127, 255, cv2.THRESH_BINARY)
             
             x_opaque_np, x_in_np, M_gt_np = self.create_white_bg_direct(rgba_opaque, rgba_ref, rgba_mask)
@@ -626,8 +626,8 @@ class MyTransparentMaskHeadDataset(data.Dataset):
         else:
             img_name = self.image_files[index]
             opaque_path = os.path.join(self.data_dir, 'opaque', img_name)
-            ref_path = os.path.join(self.data_dir, 'reference', img_name)
-            mask_path = os.path.join(self.data_dir, 'masks', img_name)
+            ref_path = os.path.join(self.data_dir, 'transparent', img_name)
+            mask_path = os.path.join(self.data_dir, 'mask', img_name)
             
             x_opaque_np = cv2.imread(opaque_path)
             x_in_np = cv2.imread(ref_path)
@@ -636,7 +636,7 @@ class MyTransparentMaskHeadDataset(data.Dataset):
             if x_opaque_np is None or x_in_np is None or M_gt_np is None:
                 raise FileNotFoundError(f"Failed to load image: {img_name}. Check paths:\n"
                                       f"  opaque: {opaque_path}\n"
-                                      f"  reference: {ref_path}\n"
+                                      f"  transparent: {ref_path}\n"
                                       f"  mask: {mask_path}")
             
             x_opaque_np = cv2.cvtColor(x_opaque_np, cv2.COLOR_BGR2RGB)

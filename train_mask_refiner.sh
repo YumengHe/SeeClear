@@ -52,12 +52,12 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 SAVE_DIR="${BASE_CKPT_DIR}/s${STRATEGY}_${TIMESTAMP}"
 
-if [ ! -d "$DATA_DIR/opaque" ] || [ ! -d "$DATA_DIR/reference" ] || [ ! -d "$DATA_DIR/masks" ]; then
+if [ ! -d "$DATA_DIR/opaque" ] || [ ! -d "$DATA_DIR/transparent" ] || [ ! -d "$DATA_DIR/mask" ]; then
     echo "Error: Mask refiner dataset is incomplete under: $DATA_DIR"
     echo "Expected directories:"
     echo "  $DATA_DIR/opaque"
-    echo "  $DATA_DIR/reference"
-    echo "  $DATA_DIR/masks"
+    echo "  $DATA_DIR/transparent"
+    echo "  $DATA_DIR/mask"
     exit 1
 fi
 

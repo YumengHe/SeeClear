@@ -27,7 +27,12 @@ dataset/my_data/test_list.txt
 Create the lists from `dataset/my_data/opaque/`:
 
 ```bash
-python scripts/split_dataset.py --data_dir dataset/my_data --train_size 4824 --val_size 30 --test_size 30 --seed 42
+python scripts/split_dataset.py \
+  --data_dir dataset/my_data \
+  --train_size <num_train> \
+  --val_size <num_val> \
+  --test_size <num_test> \
+  --seed 42
 ```
 
 The training scripts use `train_list.txt` for optimization and `val_list.txt`

@@ -286,7 +286,7 @@ def _save_upload_mask_instances(mask, out_dir: Path) -> list[Path]:
 def _manual_gsam_prompt(prompt: str) -> tuple[str, int]:
     terms = [t.strip().lower().rstrip(".") for t in re.split(r"[\n,;]+", prompt or "") if t.strip().strip(".")]
     if not terms:
-        raise gr.Error("Enter at least one Grounded-SAM2 text prompt, for example: bottle, glass.")
+        raise gr.Error("Enter at least one Grounded SAM 2 text prompt, for example: bottle, glass.")
     return ". ".join(terms) + ".", 1
 
 
@@ -485,7 +485,7 @@ def update_mask_processing_ui(mask_source, image):
     GSAM2_STATE.reset_all()
     BBX_STATE.reset_all()
     show_sam3 = mask_source == "SAM3 click"
-    show_gsam = mask_source == "Grounded-SAM2 text"
+    show_gsam = mask_source == "Grounded SAM 2 text"
     show_bbx = mask_source == "Manual BBX"
     show_mask_actions = mask_source in ("Upload mask", "Trans4Trans auto")
     show_generate = mask_source == "Trans4Trans auto"
@@ -821,7 +821,7 @@ def _gsam2_overlay_image():
 
 
 def _gsam2_union_path():
-    """Saves union of all saved GSAM2 masks to a temp file, returns path str or None."""
+    """Saves union of all saved Grounded SAM 2 masks to a temp file, returns path str or None."""
     if not GSAM2_STATE.saved_masks:
         return None
     ts = time.time_ns()
@@ -849,7 +849,7 @@ def gsam2_run(image, prompt):
     _run_command(cmd, paths.repo_root, logs)
     mask_paths = collect_mask_paths(out_dir)
     if not mask_paths:
-        raise gr.Error("GSAM2 produced no mask for that prompt.")
+        raise gr.Error("Grounded SAM 2 produced no mask for that prompt.")
     arrays = [np.array(Image.open(p).convert("L")) > 0 for p in mask_paths]
     GSAM2_STATE.current_masks = arrays
     return _gsam2_overlay_image()
@@ -857,14 +857,14 @@ def gsam2_run(image, prompt):
 
 def gsam2_save_mask():
     if GSAM2_STATE.current_image_rgb is None or not GSAM2_STATE.current_masks:
-        raise gr.Error("Run GSAM2 first to get a mask.")
+        raise gr.Error("Run Grounded SAM 2 first to get a mask.")
     GSAM2_STATE.saved_masks.extend(mask.copy() for mask in GSAM2_STATE.current_masks)
     GSAM2_STATE.current_masks = []
     saved_paths = _save_mask_arrays(
         GSAM2_STATE.saved_masks,
         Path(os.environ["GRADIO_TEMP_DIR"]) / "gsam2_saved_masks" / f"state_{time.time_ns()}",
     )
-    MASK_STATE.set(saved_paths, _image_array_signature(GSAM2_STATE.current_image_rgb), "Grounded-SAM2 text")
+    MASK_STATE.set(saved_paths, _image_array_signature(GSAM2_STATE.current_image_rgb), "Grounded SAM 2 text")
     OPAQUE_STATE.clear()
     return _gsam2_overlay_image(), _gsam2_union_path()
 
@@ -1049,12 +1049,12 @@ def _mask_paths_for_source(
         _run_command(cmd, paths.repo_root, logs)
         return collect_mask_paths(out_dir)
 
-    if mask_source == "Grounded-SAM2 text":
+    if mask_source == "Grounded SAM 2 text":
         prompt = gsam_prompt
         synonyms_per_object = 3 if use_grouped_prompt else 1
         if not use_grouped_prompt:
             prompt, synonyms_per_object = _manual_gsam_prompt(gsam_prompt)
-        logs.append(f"[Grounded-SAM2 prompt] {prompt}")
+        logs.append(f"[Grounded SAM 2 prompt] {prompt}")
         out_dir = work_dir / "grounded_sam2_mask"
         cmd = build_gsam2_command(
             paths,
@@ -1094,7 +1094,7 @@ def generate_mask(
     image_path = _save_upload_image(image, work_dir / "upload" / "demo.png")
     prompt_for_run = gsam_prompt
     use_grouped_prompt = False
-    if mask_source == "Grounded-SAM2 text" and GPT_PROMPT_STATE.matches(image_signature, gsam_prompt):
+    if mask_source == "Grounded SAM 2 text" and GPT_PROMPT_STATE.matches(image_signature, gsam_prompt):
         prompt_for_run = GPT_PROMPT_STATE.full_prompt
         use_grouped_prompt = True
     logs = [f"[work_dir] {work_dir}"]
@@ -1354,7 +1354,7 @@ with gr.Blocks(title="SeeClear Demo") as demo:
                     "Upload mask",
                     "Manual BBX",
                     "SAM3 click",
-                    "Grounded-SAM2 text",
+                    "Grounded SAM 2 text",
                     "Trans4Trans auto",
                 ],
                 value="Trans4Trans auto",
@@ -1394,14 +1394,14 @@ with gr.Blocks(title="SeeClear Demo") as demo:
                 bbx_union_out = gr.Image(label="Saved masks union", type="filepath")
             with gr.Group(visible=False) as gsam_group:
                 gsam_prompt = gr.Textbox(
-                    label="Grounded-SAM2 prompt",
+                    label="Grounded SAM 2 prompt",
                     placeholder="bottle, glass, cup",
                     lines=2,
                 )
                 # GPT prompt generation is disabled for this release.
                 # gpt_prompt_btn = gr.Button("Generate GPT prompt", variant="secondary")
-                gsam2_run_btn = gr.Button("Run GSAM2", variant="secondary")
-                gsam2_preview = gr.Image(label="GSAM2 mask overlay", type="numpy")
+                gsam2_run_btn = gr.Button("Run Grounded SAM 2", variant="secondary")
+                gsam2_preview = gr.Image(label="Grounded SAM 2 mask overlay", type="numpy")
                 with gr.Row():
                     gsam2_save_btn = gr.Button("Save mask")
                     gsam2_clear_saved_btn = gr.Button("Clear saved masks")

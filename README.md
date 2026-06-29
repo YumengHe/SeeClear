@@ -29,22 +29,21 @@ run on your own GPU server.
 ## News
 
 - **2026-03-20**: SeeClear is available on arXiv.
-- **Coming soon**: Pretrained checkpoints, dataset links, and hosted demo links
-  will be added.
+- **Coming soon**: Pretrained checkpoints and dataset links will be added.
 
 ## Method Overview
 
 Given an RGB image with transparent objects, SeeClear runs:
 
 1. Transparent-object mask preparation with Trans4Trans, an uploaded mask, SAM3,
-   or GSAM2.
+   or Grounded SAM 2.
 2. Conditional diffusion opacification inside the transparent regions.
 3. Lightweight mask refinement after generation.
 4. Opaque image compositing.
 5. Monocular depth prediction with Depth Anything 3 or MoGe.
 
-The default automatic segmentation mode uses Trans4Trans. SAM3 and GSAM2 are
-kept as optional mask preparation tools in the demo.
+The default automatic segmentation mode uses Trans4Trans. SAM3 and
+Grounded SAM 2 are kept as optional mask preparation tools in the demo.
 
 ## Installation
 

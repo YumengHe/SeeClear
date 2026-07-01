@@ -4,7 +4,7 @@
   <a href="https://arxiv.org/abs/2603.19547"><img src="https://img.shields.io/badge/arXiv-2603.19547-b31b1b.svg?logo=arXiv" alt="arXiv"></a>
   <a href="https://heyumeng.com/SeeClear-web/"><img src="https://img.shields.io/badge/Project-Page-blue" alt="Project page"></a>
   <a href="#local-gradio-demo"><img src="https://img.shields.io/badge/Demo-Local%20Gradio-green" alt="Local demo"></a>
-  <a href="#model-files"><img src="https://img.shields.io/badge/Models-Coming%20Soon-lightgrey" alt="Models"></a>
+  <a href="https://huggingface.co/2bidoubi/SeeClear-weights"><img src="https://img.shields.io/badge/Models-Hugging%20Face-yellow" alt="Models"></a>
   <a href="#dataset"><img src="https://img.shields.io/badge/Dataset-Coming%20Soon-lightgrey" alt="Dataset"></a>
 </p>
 
@@ -29,7 +29,8 @@ run on your own GPU server.
 ## News
 
 - **2026-03-20**: SeeClear is available on arXiv.
-- **Coming soon**: Pretrained checkpoints and dataset links will be added.
+- **2026-06-30**: Demo checkpoints are available on Hugging Face.
+- **Coming soon**: Dataset links will be added.
 
 ## Method Overview
 
@@ -61,13 +62,16 @@ local demo. CUDA 12.1 compatible NVIDIA drivers are recommended.
 
 ## Model Files
 
-This is a code-only release. Model weights and datasets are not included.
+Download the SeeClear demo checkpoints:
 
-Required SeeClear checkpoints:
+```bash
+python scripts/download_checkpoints.py
+```
+
+Required SeeClear demo checkpoints:
 
 ```text
 pretrained_models/clip-vit-large-patch14/
-pretrained_models/seeclear_pretrained.ckpt
 pretrained_models/seeclear_opacification.ckpt
 pretrained_models/mask_refiner.pth
 ```
@@ -77,6 +81,7 @@ The default diffusion training command fine-tunes from
 original Paint-by-Example initialization, provide:
 
 ```text
+pretrained_models/seeclear_pretrained.ckpt
 pretrained_models/pbe_pretrained.ckpt
 ```
 
@@ -210,7 +215,7 @@ bash train_mask_refiner.sh -s5
 
 The paper introduces **SeeClear-396k**, a paired synthetic dataset of
 transparent and opaque renderings with aligned masks, depth, and normals. The
-dataset is not included in this code-only release.
+dataset link will be added when the dataset release is ready.
 
 ## Citation
 

@@ -8,6 +8,12 @@ conda activate seeclear
 
 ## Demo
 
+Download the SeeClear demo checkpoints:
+
+```bash
+python scripts/download_checkpoints.py
+```
+
 ```bash
 python -m demo.app
 ```

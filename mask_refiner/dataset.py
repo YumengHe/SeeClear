@@ -96,7 +96,6 @@ def apply_smooth_displacement(mask, args):
     
     dx = dx * weight_map
     dy = dy * weight_map
-    # =================================================
     
     x, y = np.meshgrid(np.arange(w), np.arange(h))
     map_x = (x + dx).astype(np.float32)
@@ -274,7 +273,6 @@ def scheme2_pure_displacement(mask, is_thin=False, args=None):
     if is_thin:
         strength_range = (strength_range[0] / 2.0, strength_range[1] / 2.0)
         close_ksize = max(3, close_ksize // 2)
-    # ===================================
     
     strength = random.uniform(*strength_range)
     result = apply_smooth_displacement(result, {'disp_strength': strength, 'disp_grid_res': 30})
@@ -654,7 +652,6 @@ class MyTransparentMaskHeadDataset(data.Dataset):
         M_gt_mask_float_blurred = cv2.GaussianBlur(M_gt_mask_float_raw, (3, 3), 1.0)
         M_gt_3ch_blurred = M_gt_mask_float_blurred[:, :, np.newaxis]
         
-        # GT = Mask_Blurred * Opaque + (1-Mask_Blurred) * Reference
         x_target_np = (M_gt_3ch_blurred * x_opaque_np.astype(np.float32) + 
                        (1.0 - M_gt_3ch_blurred) * x_in_np.astype(np.float32))
         x_target_np = np.clip(x_target_np, 0, 255).astype(np.uint8)
@@ -673,7 +670,7 @@ class MyTransparentMaskHeadDataset(data.Dataset):
             heatmap_np = generate_heatmap(resize_dim, center_point, sigma=self.heatmap_sigma)
         
         elif self.mask_strategy in [5, 6, 7, 8]:
-            scheme = self.mask_strategy - 4  # 5->1, 6->2, 7->3, 8->4
+            scheme = self.mask_strategy - 4
             
             if self.state in ['train', 'val']:
                 condition_binary_np = augment_mask_scheme(M_gt_binary_np, scheme=scheme, args=self.args)
@@ -694,7 +691,7 @@ class MyTransparentMaskHeadDataset(data.Dataset):
             heatmap_np = condition_binary_np.astype(np.float32) / 255.0
         
         elif self.mask_strategy in [9, 10, 11, 12]:
-            bbox_mode = self.mask_strategy - 8  # 9->1, 10->2, 11->3, 12->4
+            bbox_mode = self.mask_strategy - 8
             
             if self.state == 'train':
                 bbox_augmented = self.get_augmented_bbox(M_gt_binary_np, bbox_mode)

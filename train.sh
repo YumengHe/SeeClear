@@ -1,13 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-# 
-#   bash train.sh
-#   bash train.sh --from-pbe
-#
-#   bash train.sh -r outputs/opacification/<run_name>
-#   bash train.sh -r outputs/opacification/<run_name>/checkpoints/last.ckpt
-
 RESUME_PATH=""
 PYTHON_BIN="python"
 EXTRA_ARGS=""

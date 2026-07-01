@@ -5,7 +5,6 @@ import socket
 import subprocess
 import tempfile
 import os
-import base64
 import hashlib
 import re
 import time
@@ -134,34 +133,6 @@ class OpaqueState:
 OPAQUE_STATE = OpaqueState()
 
 
-class GptPromptState:
-    def __init__(self):
-        self.full_prompt = None
-        self.display_prompt = None
-        self.image_signature = None
-
-    def set(self, full_prompt, display_prompt, image_signature):
-        self.full_prompt = full_prompt
-        self.display_prompt = display_prompt
-        self.image_signature = image_signature
-
-    def clear(self):
-        self.full_prompt = None
-        self.display_prompt = None
-        self.image_signature = None
-
-    def matches(self, image_signature, display_prompt):
-        return (
-            self.full_prompt is not None
-            and self.display_prompt is not None
-            and self.image_signature == image_signature
-            and (display_prompt or "").strip() == self.display_prompt.strip()
-        )
-
-
-GPT_PROMPT_STATE = GptPromptState()
-
-
 class Gsam2State:
     def __init__(self):
         self.saved_masks = []
@@ -184,8 +155,8 @@ GSAM2_STATE = Gsam2State()
 class BbxState:
     def __init__(self):
         self.points = []
-        self.current_mask = None  # bool ndarray for current unsaved polygon
-        self.saved_masks = []     # list of bool ndarray
+        self.current_mask = None
+        self.saved_masks = []
         self.current_image_rgb = None
 
     def reset_current(self):
@@ -288,56 +259,6 @@ def _manual_gsam_prompt(prompt: str) -> tuple[str, int]:
     if not terms:
         raise gr.Error("Enter at least one Grounded SAM 2 text prompt, for example: bottle, glass.")
     return ". ".join(terms) + ".", 1
-
-
-def _gpt_transparent_object_prompt(image_path: Path) -> tuple[str, int, str]:
-    raise gr.Error("GPT prompt generation is disabled for this release.")
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise gr.Error("OPENAI_API_KEY is not set on the server.")
-    from openai import OpenAI
-
-    image_b64 = base64.b64encode(image_path.read_bytes()).decode("utf-8")
-    client = OpenAI()
-    response = client.responses.create(
-        model=os.environ.get("OPENAI_VISION_MODEL", "gpt-4.1-mini"),
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": (
-                            "Find all transparent or translucent physical objects in this image. "
-                            "Return ONLY lines in this exact format, one object per line: "
-                            "object_name: synonym1. synonym2. synonym3. "
-                            "Use concise English object names and include three grounding terms per object. "
-                            "Do not include non-transparent background objects."
-                        ),
-                    },
-                    {
-                        "type": "input_image",
-                        "image_url": f"data:image/jpeg;base64,{image_b64}",
-                    },
-                ],
-            }
-        ],
-    )
-    all_terms = []
-    display_terms = []
-    for line in response.output_text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if ":" in line:
-            line = line.split(":", 1)[1]
-        group_terms = [t.strip().lower().rstrip(".") for t in line.split(".") if t.strip().strip(".")]
-        if not group_terms:
-            continue
-        all_terms.extend(group_terms[:3])
-        display_terms.append(group_terms[0])
-    if not all_terms:
-        raise gr.Error("GPT returned no transparent-object prompt terms.")
-    return ". ".join(all_terms) + ".", 3, ". ".join(display_terms) + "."
 
 
 def _normalize_image(image):
@@ -591,7 +512,6 @@ def mask_input_changed(image, mask_source, mask):
 
 
 def clear_image_dependent_outputs():
-    GPT_PROMPT_STATE.clear()
     MASK_STATE.clear()
     OPAQUE_STATE.clear()
     return None, None, None, None, gr.update(value=None, visible=False), None, None, None
@@ -600,18 +520,6 @@ def clear_image_dependent_outputs():
 def clear_opaque_outputs():
     OPAQUE_STATE.clear()
     return None, None, None, gr.update(value=None, visible=False), None, None, None
-
-
-def generate_gpt_prompt(image):
-    raise gr.Error("GPT prompt generation is disabled for this release.")
-    image_signature = _image_signature(image)
-    work_dir = Path(tempfile.mkdtemp(prefix="transparent_gpt_prompt_", dir=os.environ["GRADIO_TEMP_DIR"]))
-    image_path = _save_upload_image(image, work_dir / "upload" / "demo.png")
-    full_prompt, _, display_prompt = _gpt_transparent_object_prompt(image_path)
-    GPT_PROMPT_STATE.set(full_prompt, display_prompt, image_signature)
-    MASK_STATE.clear()
-    OPAQUE_STATE.clear()
-    return display_prompt
 
 
 def _predict_current_sam3_mask(multimask):
@@ -1036,7 +944,6 @@ def _refine_with_sam3(paths, image_path: Path, mask_input: Path, work_dir: Path,
 def _mask_paths_for_source(
     mask_source: str,
     gsam_prompt: str,
-    use_grouped_prompt: bool,
     paths,
     image_path: Path,
     mask,
@@ -1050,10 +957,7 @@ def _mask_paths_for_source(
         return collect_mask_paths(out_dir)
 
     if mask_source == "Grounded SAM 2 text":
-        prompt = gsam_prompt
-        synonyms_per_object = 3 if use_grouped_prompt else 1
-        if not use_grouped_prompt:
-            prompt, synonyms_per_object = _manual_gsam_prompt(gsam_prompt)
+        prompt, synonyms_per_object = _manual_gsam_prompt(gsam_prompt)
         logs.append(f"[Grounded SAM 2 prompt] {prompt}")
         out_dir = work_dir / "grounded_sam2_mask"
         cmd = build_gsam2_command(
@@ -1092,16 +996,10 @@ def generate_mask(
     work_dir = Path(tempfile.mkdtemp(prefix="transparent_mask_demo_", dir=os.environ["GRADIO_TEMP_DIR"]))
     image_signature = _image_signature(image)
     image_path = _save_upload_image(image, work_dir / "upload" / "demo.png")
-    prompt_for_run = gsam_prompt
-    use_grouped_prompt = False
-    if mask_source == "Grounded SAM 2 text" and GPT_PROMPT_STATE.matches(image_signature, gsam_prompt):
-        prompt_for_run = GPT_PROMPT_STATE.full_prompt
-        use_grouped_prompt = True
     logs = [f"[work_dir] {work_dir}"]
     mask_paths = _mask_paths_for_source(
         mask_source,
-        prompt_for_run,
-        use_grouped_prompt,
+        gsam_prompt,
         paths,
         image_path,
         mask,
@@ -1214,7 +1112,6 @@ def generate_depth(image, depth_source: str):
         if mask_paths:
             save_depth_per_instance_vis(outputs["depth_npy"], mask_paths, inst_pre_path)
 
-    # Baseline: run same depth model on original RGB image
     if image is not None:
         bl_dir = depth_dir / "baseline"
         bl_dir.mkdir(parents=True, exist_ok=True)
@@ -1316,7 +1213,6 @@ def upload_opaque(image, mask, opaque_path):
         depth_dir=depth_dir,
         stem=stem,
     )
-    # image may be None if user uploads opaque without an RGB image — store None to skip signature check
     sig = _image_signature(image) if image is not None else None
     if mask is not None:
         mask_paths = _save_upload_mask_instances(mask, work_dir / "mask" / stem)
@@ -1398,8 +1294,6 @@ with gr.Blocks(title="SeeClear Demo") as demo:
                     placeholder="bottle, glass, cup",
                     lines=2,
                 )
-                # GPT prompt generation is disabled for this release.
-                # gpt_prompt_btn = gr.Button("Generate GPT prompt", variant="secondary")
                 gsam2_run_btn = gr.Button("Run Grounded SAM 2", variant="secondary")
                 gsam2_preview = gr.Image(label="Grounded SAM 2 mask overlay", type="numpy")
                 with gr.Row():
@@ -1455,7 +1349,6 @@ with gr.Blocks(title="SeeClear Demo") as demo:
     mask_source.change(clear_generated_outputs, outputs=[optimized_out, depth_gray_out, depth_color_out, opaque_download_file, depth_instance_out, baseline_color_out, baseline_instance_out])
     mask_source.change(lambda: None, outputs=[mask_overlay_out])
     gsam_prompt.change(clear_generated_outputs, outputs=[optimized_out, depth_gray_out, depth_color_out, opaque_download_file, depth_instance_out, baseline_color_out, baseline_instance_out])
-    # gpt_prompt_btn.click(generate_gpt_prompt, inputs=[image_in], outputs=[gsam_prompt])
     seed.change(clear_opaque_outputs, outputs=[optimized_out, depth_gray_out, depth_color_out, opaque_download_file, depth_instance_out, baseline_color_out, baseline_instance_out])
     steps.change(clear_opaque_outputs, outputs=[optimized_out, depth_gray_out, depth_color_out, opaque_download_file, depth_instance_out, baseline_color_out, baseline_instance_out])
     depth_source.change(lambda: (None, None, None, None, None), outputs=[depth_gray_out, depth_color_out, depth_instance_out, baseline_color_out, baseline_instance_out])

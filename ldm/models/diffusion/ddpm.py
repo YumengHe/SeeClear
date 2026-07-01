@@ -32,9 +32,6 @@ import time
 import random
 from torch.autograd import Variable
 
-# ==========================================
-# NEW: Interior Multi-Scale Shading Gradient Loss Helpers
-# ==========================================
 def _morph_dilate(mask, k=11):
     pad = k // 2
     return torch.nn.functional.max_pool2d(mask, kernel_size=k, stride=1, padding=pad)
@@ -77,17 +74,14 @@ def shading_grad_loss_one(x_hat, x_gt, mask_gt,
     """
     Inputs must be in [0, 1] range.
     """
-    # interior mask to suppress edges
     m_in = _morph_erode(mask_gt, k=erode_k)
 
-    # log-luminance
     y_hat = _luminance(x_hat).clamp(min=0.0)
     y_gt  = _luminance(x_gt).clamp(min=0.0)
     if use_log:
         y_hat = torch.log(y_hat + 1e-3)
         y_gt  = torch.log(y_gt  + 1e-3)
 
-    # multi-scale gradient match
     total = 0.0
     denom = (m_in.sum() + eps)
     for s in sigmas:
@@ -99,7 +93,6 @@ def shading_grad_loss_one(x_hat, x_gt, mask_gt,
         total = total + (diff * m_in).sum() / denom
 
     return total / len(sigmas)
-# ==========================================
 
 def masked_l1_loss(x_hat, x_gt, mask, eps=1e-6):
     """
@@ -107,7 +100,6 @@ def masked_l1_loss(x_hat, x_gt, mask, eps=1e-6):
     Inputs: x_hat, x_gt can be in any range (e.g. [-1, 1]).
     """
     diff = torch.abs(x_hat - x_gt)
-    # Normalize by mask area to prevent loss scale drifting
     loss = (diff * mask).sum() / (mask.sum() + eps)
     return loss
 
@@ -116,7 +108,6 @@ __conditioning_keys__ = {'concat': 'c_concat',
                          'adm': 'y'}
 
 
-# ============== Validation Metrics ==============
 def calculate_psnr(img1, img2, max_val=1.0):
     """Helper function."""
     mse = torch.mean((img1 - img2) ** 2)
@@ -146,7 +137,6 @@ def calculate_ssim(img1, img2, window_size=11, size_average=True):
         return ssim_map.mean()
     else:
         return ssim_map.mean(1).mean(1).mean(1)
-# ===============================================
 
 
 def disabled_train(self, mode=True):
@@ -285,7 +275,6 @@ class DDPM(pl.LightningModule):
             lvlb_weights = 0.5 * np.sqrt(torch.Tensor(alphas_cumprod)) / (2. * 1 - torch.Tensor(alphas_cumprod))
         else:
             raise NotImplementedError("mu not supported")
-        # TODO how to choose this term
         lvlb_weights[0] = lvlb_weights[1]
         self.register_buffer('lvlb_weights', lvlb_weights, persistent=False)
         assert not torch.isnan(self.lvlb_weights).all()
@@ -1304,8 +1293,6 @@ class LatentDiffusion(DDPM):
         loss_dict.update({f'{prefix}/loss_vlb': loss_vlb})
         loss += (self.original_elbo_weight * loss_vlb)
 
-        # === Perceptual / Shading / Pixel Losses ===
-        # Check if ANY image-space loss is active
         loss_active = (self.lpips_weight > 0.0 or 
                        self.shading_grad_weight > 0.0 or 
                        self.masked_l1_weight > 0.0)
@@ -1764,7 +1751,6 @@ class DiffusionWrapper(pl.LightningModule):
 
 
 class Layout2ImgDiffusion(LatentDiffusion):
-    # TODO: move all layout-specific hacks to this class
     def __init__(self, cond_stage_key, *args, **kwargs):
         assert cond_stage_key == 'coordinates_bbox', 'Layout2ImgDiffusion only for cond_stage_key="coordinates_bbox"'
         super().__init__(cond_stage_key=cond_stage_key, *args, **kwargs)

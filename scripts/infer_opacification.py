@@ -222,7 +222,7 @@ def generate_heatmap_in_patch(mask_patch_np, mode, sigma=10):
         hm = np.zeros((h, w), dtype=np.uint8)
         if len(xs) > 0: hm[ys.min():ys.max()+1, xs.min():xs.max()+1] = 255
         return hm
-    else:  # mask
+    else:
         hm = np.zeros((h, w), dtype=np.uint8)
         hm[mask_patch_np > 127] = 255
         return hm
@@ -237,7 +237,7 @@ def build_arg_parser():
     parser.add_argument('--mask',           type=str, default=None,
                         help='Single mask image or a directory of mask images for --image.')
     parser.add_argument('--work_dir',       type=str, default=None,
-                        help='Temporary/output directory used with --image and --mask.')
+                        help='Output directory used with --image and --mask.')
     parser.add_argument('--stem',           type=str, default='demo',
                         help='Output stem used with --image and --mask.')
     parser.add_argument('--opacification_ckpt', type=str, required=True)
@@ -324,10 +324,7 @@ def run_opacification(args, runtime=None):
         if missing:
             raise ValueError(f"{', '.join(missing)} required unless --image/--mask/--work_dir are used")
 
-    # seed_idx -> { img_name -> {t_prep, t_diff, t_head, t_blend, n_masks} }
     all_timings = {}
-    # Aggregate model-load wall-clock. For CLI this includes the one-time runtime
-    # load. In the Gradio demo the runtime is cached by the server process.
     if runtime is None:
         runtime = OpacificationRuntime.from_args(args)
     t_load_total = runtime.load_time
@@ -338,8 +335,6 @@ def run_opacification(args, runtime=None):
 
     diff_mode_type = 'mask'
 
-    # =========================================================
-    # =========================================================
     for seed_idx, seed in enumerate(args.seeds):
         print(f"\n========== Seed {seed} (run {seed_idx}) ==========")
         np.random.seed(seed)
@@ -348,13 +343,10 @@ def run_opacification(args, runtime=None):
         cur_output_base = f"{args.output_base}_{seed_idx}"
         os.makedirs(cur_output_base, exist_ok=True)
 
-        # Per-seed timing dict (img_name -> phase wall-clock seconds)
         timing = defaultdict(lambda: {'t_prep': 0.0, 't_diff': 0.0, 't_head': 0.0,
                                       't_blend': 0.0, 'n_masks': 0})
         all_timings[str(seed_idx)] = timing
 
-        # =========================================================
-        # =========================================================
         print(f"[Phase 1] Running diffusion...")
         entries = []
 
@@ -397,9 +389,8 @@ def run_opacification(args, runtime=None):
             orig_w, orig_h = img_pil.size
             img_np = np.array(img_pil)
 
-            # ---- CPU prep: gather per-mask patch tensors before batching ----
             W, H = 512, 512
-            per_mask = []  # list of dicts ready for batched diffusion
+            per_mask = []
 
             if args.prep_mode == 'legacy':
                 for m_idx, mf in enumerate(mask_files):
@@ -432,8 +423,7 @@ def run_opacification(args, runtime=None):
                         'info':             info,
                     })
             else:
-                # fast: threaded mask read + numpy-only patch + cv2 LANCZOS4 + batched H2D
-                target_wh = img_pil.size  # (W, H) for PIL
+                target_wh = img_pil.size
                 worker_n = max(1, min(args.prep_mask_workers, len(mask_files)))
                 with ThreadPoolExecutor(max_workers=worker_n) as ex:
                     masks_full_np = list(ex.map(_read_mask_np_resized,
@@ -489,13 +479,12 @@ def run_opacification(args, runtime=None):
                 print(f"  [NO_VALID_MASK] {img_name}: saved original to blend/")
                 continue
 
-            # ---- Batched diffusion: chunk per_mask into args.batch_size groups ----
             bs = max(1, args.batch_size)
             for chunk_start in range(0, len(per_mask), bs):
                 chunk = per_mask[chunk_start:chunk_start + bs]
                 N = len(chunk)
-                patch_batch = torch.cat([d['patch_tensor']    for d in chunk], dim=0)  # (N,3,512,512)
-                hm_batch    = torch.cat([d['hm_patch_tensor'] for d in chunk], dim=0)  # (N,1,512,512)
+                patch_batch = torch.cat([d['patch_tensor']    for d in chunk], dim=0)
+                hm_batch    = torch.cat([d['hm_patch_tensor'] for d in chunk], dim=0)
 
                 _cuda_sync()
                 _t0 = time.perf_counter()
@@ -543,16 +532,11 @@ def run_opacification(args, runtime=None):
             print("No entries for this seed.")
             continue
 
-        # =========================================================
-        # =========================================================
         print(f"[Phase 2] Running mask head over {len(entries)} entries...")
         head_results = []
 
         head_results = [None] * len(entries)
         bs_head = max(1, args.batch_size)
-        # Group entry indices by img_name so phase 2 batching is per-image
-        # (within an image: N masks stacked into one m_head forward; across
-        #  images: serial). Mirrors phase 1's per-image batching.
         img_to_idxs = defaultdict(list)
         for idx, entry in enumerate(entries):
             img_to_idxs[entry['img_name']].append(idx)
@@ -583,7 +567,6 @@ def run_opacification(args, runtime=None):
                 _cuda_sync()
                 gpu_t_chunk = time.perf_counter() - _t0_gpu
 
-                # All chunk time belongs to img_name (per-image batching).
                 timing[img_name]['t_head'] += gpu_t_chunk
 
                 for i, entry in enumerate(chunk):
@@ -611,10 +594,6 @@ def run_opacification(args, runtime=None):
                         head_results[chunk_idx[i]] = None
                     timing[img_name]['t_head'] += time.perf_counter() - _t0_cpu
 
-        # =========================================================
-        # Cross-image ThreadPool: different stems' blend+save run concurrently.
-        # t_blend = composite (LANCZOS resize + localized mask copy) + npy save per image.
-        # =========================================================
         n_total = len(set(e['img_name'] for e in entries))
         print(f"[Phase 3] Blend+save for {n_total} stems  "
               f"(workers={args.phase3_workers}, mask_workers={args.phase3_mask_workers})")
@@ -630,7 +609,7 @@ def run_opacification(args, runtime=None):
             first = entries[idx_list_sorted[0]]
 
             t0_blend = time.perf_counter()
-            canvas = first['img_np'].copy()  # (H, W, 3) uint8
+            canvas = first['img_np'].copy()
 
             def prepare_local_blend(i):
                 e = entries[i]

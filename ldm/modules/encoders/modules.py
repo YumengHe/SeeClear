@@ -165,11 +165,11 @@ class FrozenCLIPImageEmbedder(AbstractEncoder):
     def forward(self, image):
         outputs = self.transformer(pixel_values=image)
         if not self.use_patch_tokens:
-            z = outputs.pooler_output      # (B, 1024)
-            z = z.unsqueeze(1)             # (B, 1, 1024)
-            z = self.mapper(z)             # (B, 1, 1024)
+            z = outputs.pooler_output
+            z = z.unsqueeze(1)
+            z = self.mapper(z)
         else:
-            z = outputs.last_hidden_state  # (B, 257, 1024)
+            z = outputs.last_hidden_state
         z = self.final_ln(z)
         return z
 
@@ -216,7 +216,7 @@ class FrozenDinoV2Encoder(AbstractEncoder):
 
     def freeze(self):
         self.model.eval()
-        self.model.train = lambda mode=True: self.model  # Bug fix: prevent Lightning from switching backbone back to train mode
+        self.model.train = lambda mode=True: self.model
         for param in self.parameters():
             param.requires_grad = False
 
@@ -234,11 +234,11 @@ class FrozenDinoV2Encoder(AbstractEncoder):
             features = self.model.forward_features(image)
         
         if not self.use_patch_tokens:
-            z = features["x_norm_clstoken"].unsqueeze(1) # (B, 1, 1536)
+            z = features["x_norm_clstoken"].unsqueeze(1)
         else:
             cls_token = features["x_norm_clstoken"].unsqueeze(1)
             patch_tokens = features["x_norm_patchtokens"]
-            z = torch.cat([cls_token, patch_tokens], dim=1) # (B, 257, 1536)
+            z = torch.cat([cls_token, patch_tokens], dim=1)
         
         z = self.projector(z)
         z = self.final_ln(z)

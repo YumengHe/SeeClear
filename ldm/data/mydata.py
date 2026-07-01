@@ -97,7 +97,6 @@ def apply_smooth_displacement(mask, args):
     
     dx = dx * weight_map
     dy = dy * weight_map
-    # =================================================
     
     x, y = np.meshgrid(np.arange(w), np.arange(h))
     map_x = (x + dx).astype(np.float32)
@@ -268,7 +267,6 @@ def scheme2_pure_displacement(mask, is_thin=False, args=None):
     if is_thin:
         strength_range = (strength_range[0] / 2.0, strength_range[1] / 2.0)
         close_ksize = max(3, close_ksize // 2)
-    # ===================================
     
     strength = random.uniform(*strength_range)
     result = apply_smooth_displacement(result, {'disp_strength': strength, 'disp_grid_res': 30})
@@ -385,7 +383,6 @@ def augment_mask_scheme(mask, scheme=1, args=None):
     
     return original_mask
 
-# ============= Occluder Pool & Helpers (Added from Reference) =============
 class OccluderPool:
     """Helper function."""
     def __init__(self, data_dir, image_files, max_pool_size=500):
@@ -557,7 +554,6 @@ def apply_realistic_occlusion(img_list, mask_gt, occluder_pool, args):
     occluded_mask = cv2.bitwise_and(mask_gt, cv2.bitwise_not(placed_mask))
     return occluded_imgs, occluded_mask
 
-# Tensor conversion functions (unchanged)
 def get_tensor(normalize=True, toTensor=True):
     transform_list = []
     if toTensor:
@@ -610,13 +606,11 @@ class MyTransparentDataset(data.Dataset):
         self.length = len(self.image_files)
         print(f"[{state}] condition_type={self.condition_type}, mask_aug_scheme={self.mask_aug_scheme}, heatmap_sigma={self.heatmap_sigma}")
 
-        # === Occluder Pool Initialization (Added) ===
         if state == 'train' and args.get('use_realistic_occlusion', False):
             self.occluder_pool = OccluderPool(self.data_dir, self.image_files, 
                                               max_pool_size=args.get('occluder_pool_size', 500))
         else:
             self.occluder_pool = None
-        # ============================================
 
     def __len__(self):
         return self.length
@@ -672,7 +666,6 @@ class MyTransparentDataset(data.Dataset):
         _, M_gt_binary_np = cv2.threshold(M_gt_np, 127, 255, cv2.THRESH_BINARY)
         info = f"dataset_{self.mask_strategy}"
 
-        # === Realistic Occlusion Logic (Added) ===
         if self.occluder_pool is not None and random.random() < self.args.get('realistic_occlusion_prob', 0.1):
             images_to_occlude = [x_opaque_np, x_in_np]
             occluded_results, occluded_mask = apply_realistic_occlusion(
@@ -683,9 +676,6 @@ class MyTransparentDataset(data.Dataset):
                 x_in_np = occluded_results[1]
                 M_gt_binary_np = occluded_mask
                 info += "_occluded"
-        # =========================================
-        
-        # This part remains as you provided
         M_gt_mask_float_raw = M_gt_binary_np.astype(np.float32) / 255.0
         M_gt_mask_float_blurred = cv2.GaussianBlur(M_gt_mask_float_raw, (3, 3), 1.0)
         x_target_np = x_opaque_np.copy()
@@ -695,8 +685,6 @@ class MyTransparentDataset(data.Dataset):
         center_point_pixels = (self.output_size // 2, self.output_size // 2)
         heatmap_np = M_gt_mask_float_raw
 
-        # ================================================================
-        # ================================================================
         if self.condition_type == 'mask':
             heatmap_np = M_gt_mask_float_raw
             info += "_cond_mask"

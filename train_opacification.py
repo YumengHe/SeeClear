@@ -171,7 +171,6 @@ def worker_init_fn(_):
 
     if isinstance(dataset, Txt2ImgIterableBaseDataset):
         split_size = dataset.num_records // worker_info.num_workers
-        # reset num_records to the true number to retain reliable length information
         dataset.sample_ids = dataset.valid_ids[worker_id * split_size:(worker_id + 1) * split_size]
         current_id = np.random.choice(len(np.random.get_state()[1]), 1)
         return np.random.seed(np.random.get_state()[1][current_id] + worker_id)
@@ -242,7 +241,6 @@ class DataModuleFromConfig(pl.LightningDataModule):
         else:
             init_fn = None
 
-        # do not shuffle dataloader for iterable dataset
         shuffle = shuffle and (not is_iterable_dataset)
 
         return DataLoader(self.datasets["test"], batch_size=self.batch_size,
@@ -276,7 +274,6 @@ class SetupCallback(Callback):
 
     def on_fit_start(self, trainer, pl_module):
         if trainer.global_rank == 0:
-            # Create logdirs and save configs
             os.makedirs(self.logdir, exist_ok=True)
             os.makedirs(self.ckptdir, exist_ok=True)
             os.makedirs(self.cfgdir, exist_ok=True)
@@ -295,7 +292,6 @@ class SetupCallback(Callback):
                            os.path.join(self.cfgdir, "{}-lightning.yaml".format(self.now)))
 
         else:
-            # ModelCheckpoint callback created log directory --- remove it
             if not self.resume and os.path.exists(self.logdir):
                 dst, name = os.path.split(self.logdir)
                 dst = os.path.join(dst, "child_runs", name)
@@ -335,7 +331,7 @@ class ImageLogger(Callback):
     def _testtube(self, pl_module, images, batch_idx, split):
         for k in images:
             grid = torchvision.utils.make_grid(images[k])
-            grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
+            grid = (grid + 1.0) / 2.0
 
             tag = f"{split}/{k}"
             pl_module.logger.experiment.add_image(
@@ -355,7 +351,7 @@ class ImageLogger(Callback):
         for k in images:
             grid = torchvision.utils.make_grid(images[k], nrow=4)
             if self.rescale:
-                grid = (grid + 1.0) / 2.0  # -1,1 -> 0,1; c,h,w
+                grid = (grid + 1.0) / 2.0
             grid = grid.transpose(0, 1).transpose(1, 2).squeeze(-1)
             grid = grid.numpy()
             grid = (grid * 255).astype(np.uint8)
@@ -366,7 +362,7 @@ class ImageLogger(Callback):
 
     def log_img(self, pl_module, batch, batch_idx, split="train"):
         check_idx = batch_idx if self.log_on_batch_idx else pl_module.global_step
-        if (self.check_frequency(check_idx) and  # batch_idx % self.batch_freq == 0
+        if (self.check_frequency(check_idx) and
                 hasattr(pl_module, "log_images") and
                 callable(pl_module.log_images) and
                 self.max_images > 0):
@@ -440,7 +436,6 @@ class ImageLogger(Callback):
 
 
 class CUDACallback(Callback):
-    # see https://github.com/SeanNaren/minGPT/blob/master/mingpt/callback.py
     def _device_index(self, trainer):
         device = getattr(getattr(trainer, "strategy", None), "root_device", None)
         if device is not None and device.index is not None:
@@ -448,7 +443,6 @@ class CUDACallback(Callback):
         return getattr(trainer, "root_gpu", 0)
 
     def on_train_epoch_start(self, trainer, pl_module):
-        # Reset the memory use counter
         device_index = self._device_index(trainer)
         torch.cuda.reset_peak_memory_stats(device_index)
         torch.cuda.synchronize(device_index)
@@ -476,22 +470,16 @@ class CUDACallback(Callback):
 
 
 class DebugCallback(Callback):
-    """
-     every_n_steps , debug .
-    :<save_dir>/images/step_XXXXXX/
-    :<save_dir>/debug.log
-    """
+    """Save lightweight training diagnostics and sample visualizations."""
 
     def __init__(self, save_dir, every_n_steps=5, log_filename="debug.log"):
         super().__init__()
         self.save_dir   = save_dir
         self.every_n    = every_n_steps
         self.log_path   = os.path.join(save_dir, log_filename)
-        self._f         = None          # log file handle
-        self._t_train   = None          # training start time
-        self._t_step    = None          # per-step start time
-
-    # ──────────────────────────── helpers ────────────────────────────
+        self._f         = None
+        self._t_train   = None
+        self._t_step    = None
 
     def _log(self, msg):
         if self._f is not None:
@@ -507,13 +495,13 @@ class DebugCallback(Callback):
         def to_01_rgb(t, mode='img'):
             """Convert tensor to uint8 HxWx3 numpy for PIL."""
             t = t.detach().cpu().float()
-            if mode == 'img':           # [-1, 1] -> [0, 1]
+            if mode == 'img':
                 t = (t.clamp(-1., 1.) + 1.0) / 2.0
-            elif mode == 'mask':        # [0, 1] gray -> [0, 1] RGB
+            elif mode == 'mask':
                 t = t.clamp(0., 1.)
                 if t.shape[0] == 1:
                     t = t.repeat(3, 1, 1)
-            elif mode == 'clip':        # CLIP normalised -> [0, 1]
+            elif mode == 'clip':
                 mean = torch.tensor([0.48145466, 0.4578275, 0.40821073]).view(3, 1, 1)
                 std  = torch.tensor([0.26862954, 0.26130258, 0.27577711]).view(3, 1, 1)
                 t = (t * std + mean).clamp(0., 1.)
@@ -571,8 +559,6 @@ class DebugCallback(Callback):
         except Exception as e:
             self._log(f"    [img][WARN] grid failed: {e}")
 
-    # ──────────────────────────── hooks ────────────────────────────
-
     def on_train_start(self, trainer, pl_module):
         if trainer.global_rank != 0:
             return
@@ -596,32 +582,27 @@ class DebugCallback(Callback):
         step_time = time.time() - self._t_step if self._t_step else 0.0
         metrics   = trainer.callback_metrics
 
-        # ── text log ──
         self._log(f"\n[step {gs:06d} | epoch {trainer.current_epoch} | batch {batch_idx} | {step_time:.2f}s]")
 
-        # losses
         for key in ['train/loss', 'train/loss_simple', 'train/loss_vlb',
                     'train/lpips_loss', 'train/loss_shade_grad', 'train/loss_masked_l1']:
             if key in metrics:
                 self._log(f"  {key}: {metrics[key].item():.6f}")
 
-        # per-sample mask area + augmentation info
-        aug_mask = batch['inpaint_mask']   # (B, 1, H, W)  [0,1]
-        gt_mask  = batch['M_gt']           # (B, 1, H, W)  [0,1]
+        aug_mask = batch['inpaint_mask']
+        gt_mask  = batch['M_gt']
         aug_info = batch.get('augmentation_info', None)
         B = aug_mask.shape[0]
         for i in range(B):
             aug_area = aug_mask[i].mean().item()
             gt_area  = gt_mask[i].mean().item()
             info_str = aug_info[i] if (aug_info is not None) else 'N/A'
-            # IoU between aug_mask and gt_mask for this sample
             inter = ((aug_mask[i] > 0.5) & (gt_mask[i] > 0.5)).float().mean().item()
             union = ((aug_mask[i] > 0.5) | (gt_mask[i] > 0.5)).float().mean().item()
             iou   = inter / (union + 1e-6)
             self._log(f"  sample[{i}]: gt_area={gt_area:.4f}  aug_area={aug_area:.4f}  "
                       f"IoU={iou:.4f}  info={info_str}")
 
-        # ── image save ──
         if gs % self.every_n == 0:
             self._log(f"  >> saving images (step {gs})")
             self._save_batch_images(batch, pl_module, gs)
@@ -633,13 +614,11 @@ class DebugCallback(Callback):
         ep = trainer.current_epoch
         metrics = trainer.callback_metrics
 
-        # ── text log ──
         self._log(f"\n[VAL | epoch {ep} | batch {batch_idx}]")
         for key in ['val/loss', 'val/loss_simple', 'val/loss_vlb', 'val/psnr', 'val/ssim']:
             if key in metrics:
                 self._log(f"  {key}: {metrics[key].item():.6f}")
 
-        # per-sample mask stats
         aug_mask = batch['inpaint_mask']
         gt_mask  = batch['M_gt']
         aug_info = batch.get('augmentation_info', None)
@@ -654,7 +633,6 @@ class DebugCallback(Callback):
             self._log(f"  sample[{i}]: gt_area={gt_area:.4f}  aug_area={aug_area:.4f}  "
                       f"IoU={iou:.4f}  info={info_str}")
 
-        # ── image + error map ──
         val_dir = os.path.join(self.save_dir, "val_images", f"epoch_{ep:04d}", f"batch_{batch_idx:04d}")
         os.makedirs(val_dir, exist_ok=True)
 
@@ -668,8 +646,8 @@ class DebugCallback(Callback):
                 xn_full= torch.cat((xn, x[:, 4:]), dim=1)
                 out    = pl_module.apply_model(xn_full, t_low, c)
                 pred_z = pl_module.predict_start_from_noise(xn, t=t_low, noise=out)
-                pred   = pl_module.decode_first_stage(pred_z)   # [-1,1]
-                gt_img = batch['GT'].to(pl_module.device)        # [-1,1]
+                pred   = pl_module.decode_first_stage(pred_z)
+                gt_img = batch['GT'].to(pl_module.device)
 
             pred_01 = (pred.clamp(-1., 1.) + 1.0) / 2.0
             gt_01   = (gt_img.clamp(-1., 1.) + 1.0) / 2.0
@@ -678,7 +656,6 @@ class DebugCallback(Callback):
                 return (t.detach().cpu().permute(1, 2, 0).numpy() * 255).astype(np.uint8)
 
             for i in range(B):
-                # GT / ref / mask_aug / mask_gt
                 Image.fromarray(to_uint8(gt_01[i])).save(
                     os.path.join(val_dir, f"s{i}_1_GT.png"))
                 Image.fromarray(to_uint8(
@@ -694,12 +671,12 @@ class DebugCallback(Callback):
                 Image.fromarray(to_uint8(pred_01[i])).save(
                     os.path.join(val_dir, f"s{i}_5_pred.png"))
 
-                err = (pred_01[i] - gt_01[i]).abs()           # [3,H,W] [0,1]
+                err = (pred_01[i] - gt_01[i]).abs()
                 err_vis = (err * 5.0).clamp(0., 1.)
                 Image.fromarray(to_uint8(err_vis)).save(
                     os.path.join(val_dir, f"s{i}_6_err_L1x5.png"))
 
-                m = gt_mask[i].clamp(0.,1.)                   # [1,H,W]
+                m = gt_mask[i].clamp(0.,1.)
                 err_masked = (err * m).clamp(0., 1.)
                 Image.fromarray(to_uint8(err_masked)).save(
                     os.path.join(val_dir, f"s{i}_7_err_masked.png"))
@@ -763,8 +740,6 @@ if __name__ == "__main__":
             raise ValueError("Cannot find {}".format(opt.resume))
         if os.path.isfile(opt.resume):
             paths = opt.resume.split("/")
-            # idx = len(paths)-paths[::-1].index("logs")+1
-            # logdir = "/".join(paths[:idx])
             logdir = "/".join(paths[:-2])
             ckpt = opt.resume
         else:
@@ -775,8 +750,8 @@ if __name__ == "__main__":
         opt.resume_from_checkpoint = ckpt
         base_configs = sorted(glob.glob(os.path.join(logdir, "configs/*.yaml")))
         opt.base = base_configs + opt.base
-        _tmp = logdir.split("/")
-        nowname = _tmp[-1]
+        logdir_parts = logdir.split("/")
+        nowname = logdir_parts[-1]
     else:
         if opt.name:
             name = "_" + opt.name
@@ -793,13 +768,10 @@ if __name__ == "__main__":
     cfgdir = os.path.join(logdir, "configs")
     seed_everything(opt.seed)
 
-    # try:
-        # init and save configs
     configs = [OmegaConf.load(cfg) for cfg in opt.base]
     cli = OmegaConf.from_dotlist(unknown)
     config = OmegaConf.merge(*configs, cli)
     lightning_config = config.pop("lightning", OmegaConf.create())
-    # merge trainer cli with config
     trainer_config = lightning_config.get("trainer", OmegaConf.create())
     for k in nondefault_trainer_args(opt):
         trainer_config[k] = getattr(opt, k)
@@ -816,7 +788,6 @@ if __name__ == "__main__":
     trainer_opt = argparse.Namespace(**trainer_config)
     lightning_config.trainer = trainer_config
 
-    # model
     model = instantiate_from_config(config.model)
     if not opt.resume:
         if opt.train_from_scratch:
@@ -828,10 +799,8 @@ if __name__ == "__main__":
             model.load_state_dict(torch.load(opt.pretrained_model,map_location='cpu')['state_dict'],strict=False)
             print("Load Stable Diffusion v1-4!")
 
-    # trainer and callbacks
     trainer_kwargs = dict()
 
-    # default logger configs
     default_logger_cfgs = {
         "wandb": {
             "target": "pytorch_lightning.loggers.WandbLogger",
@@ -858,8 +827,6 @@ if __name__ == "__main__":
     logger_cfg = OmegaConf.merge(default_logger_cfg, logger_cfg)
     trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
 
-    # modelcheckpoint - use TrainResult/EvalResult(checkpoint_on=metric) to
-    # specify which metric is used to determine best models
     default_callbacks_cfg = {
         "setup_callback": {
             "target": "train_opacification.SetupCallback",
@@ -930,21 +897,15 @@ if __name__ == "__main__":
         print(f"[Resume Info] Target max epochs: {trainer_config.max_epochs}\n")
 
     trainer = Trainer.from_argparse_args(trainer_opt, **trainer_kwargs)
-    # trainer.plugins = [MyCluster()]
-    trainer.logdir = logdir  ###
+    trainer.logdir = logdir
 
-    # data
     data = instantiate_from_config(config.data)
-    # NOTE according to https://pytorch-lightning.readthedocs.io/en/latest/datamodules.html
-    # calling these ourselves should not be necessary but it is.
-    # lightning still takes care of proper multiprocessing though
     data.prepare_data()
     data.setup()
     print("#### Data #####")
     for k in data.datasets:
         print(f"{k}, {data.datasets[k].__class__.__name__}, {len(data.datasets[k])}")
 
-    # configure learning rate
     bs, base_lr = config.data.params.batch_size, config.model.base_learning_rate
     if cpu:
         ngpu = 1
@@ -958,9 +919,6 @@ if __name__ == "__main__":
         accumulate_grad_batches = lightning_config.trainer.accumulate_grad_batches
     else:
         accumulate_grad_batches = 1
-    # if 'num_nodes' in lightning_config.trainer:
-    #     num_nodes = lightning_config.trainer.num_nodes
-    # else:
     num_nodes = 1
     print(f"accumulate_grad_batches = {accumulate_grad_batches}")
     lightning_config.trainer.accumulate_grad_batches = accumulate_grad_batches
@@ -975,9 +933,7 @@ if __name__ == "__main__":
         print(f"Setting learning rate to {model.learning_rate:.2e}")
 
 
-    # allow checkpointing via USR1
     def melk(*args, **kwargs):
-        # run all checkpoint hooks
         if trainer.global_rank == 0:
             print("Summoning checkpoint.")
             ckpt_path = os.path.join(ckptdir, "last.ckpt")
@@ -995,7 +951,6 @@ if __name__ == "__main__":
     signal.signal(signal.SIGUSR1, melk)
     signal.signal(signal.SIGUSR2, divein)
 
-    # run
     if opt.train:
         try:
             trainer.fit(model, data)

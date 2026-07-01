@@ -19,7 +19,7 @@
 SeeClear is a plug-and-play framework for transparent-object depth estimation.
 It first turns transparent regions into geometry-consistent opaque appearances,
 then feeds the optimized image to an off-the-shelf monocular depth estimator.
-The depth model is kept unchanged, while depth predictions around transparent
+The depth model is kept fixed, while depth predictions around transparent
 objects become more stable.
 
 This repository contains the inference pipeline, the diffusion opacification
